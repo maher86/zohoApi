@@ -127,7 +127,7 @@ public function createSaleOrder(Request $request,$customer_id) {
     
     $date = $request->get('date');
     $items[]= $request->get('line_items');    
-    $itemsAsString = $this->buildItemsAsString($items);
+    $itemsAsString = $this->buildItemsAsString($items) ;
     $curl = curl_init();
     $jsonstring = '{"oauthscope":"ZohoInventory.salesorders.CREATE","customer_id":'.$customer_id.',"date":"'.$date.'","shipment_date":"2015-06-02","line_items":'.$itemsAsString.'}';
     echo $jsonstring;exit;
