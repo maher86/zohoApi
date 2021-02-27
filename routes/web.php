@@ -19,3 +19,8 @@ Route::get('/', function () {
 
 Route::get('accessToken','Api\ZohoApiController@generateAccessToken');
 Route::get('createSaleOrder','Api\ZohoApiController@createSaleOrder');
+Route::get('createInvoice','Api\ZohoApiController@createInvoice');
+Route::get('createCustomer','Api\ZohoApiController@createCustomer');
+Route::get('Customers','Api\ZohoApiController@getAllOrganizationCustomers');
+Route::get('create','Api\ZohoApiController@runAllApisCycle');
+
