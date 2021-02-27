@@ -22,44 +22,62 @@ class ZohoApiController extends Controller
 
 
     public function runAllApisCycle() {
-        $customers_phones = $this->getAllOrganizationCustomersPhones();        
-        // if($requet){
-        //     $customer_fname = $request->get('customer_fname');
-        //     $customer_phone =  $request->get('customer_phone');
-        //     $customer_address = $request->get('customer_address');
-        //     $customer_shipping_address = $request->get('customer_shipping_address');
-        //     $salesorder_number = $request->get('salesorder_number');
-        //     $date = $request->get('date','');
-        //     $shipment_date = $request->get('shipment_date','');
-        //     $reference_number = $request->get('reference_number','');
-        //     $line_items = $request->get('line_items','');
-        //     $notes = $request->get('notes','');
-        //     $terms = $request->get('terms','');
-        //     $discount = $request->get('discount','');
-        //     $discount_type = $request->get('discount_type','');
-        //     $shipping_charge = $request->get('shipping_charge','');
-        //     $delivery_method = $request->get('delivery_method');
-        //     $shipping_address_id = $request->get('shipping_address_id');
-        // }else{
-        //     return 'Bad Request';
-        // }
+        $customers = $this->getAllOrganizationCustomersInfo();
+        $customer_phones= array();
+        $customer_ids   = array();
+        foreach($customers as $customer){
 
-        // if(!in_array($customer_phone,$customers_phones)) {
-            $customer_address = [
-                'address'=>'uae',
-                'street2' =>'uae',
-                'city'   =>'uae',
-                'state' =>'uae',
-                'country' => 'uae'
+            $customer_phones[] = $customer['phone'];
+            $customer_ids[]    = $customer['customer_id'];
+        }        
+        if($requet) {
+            $customer_name = $request->get('customer_name');
+            $customer_phone =  $request->get('customer_phone');
+            $customer_address = $request->get('customer_address');
+            $customer_shipping_address = $request->get('customer_shipping_address');
+            $salesorder_number = $request->get('salesorder_number');
+            $date = $request->get('date','');
+            $shipment_date = $request->get('shipment_date','');
+            $reference_number = $request->get('reference_number','');
+            $line_items = $request->get('line_items','');//array of items
+            $items_qty  = $request->get('qty');
+            $notes = $request->get('notes','');
+            $terms = $request->get('terms','');
+            $discount = $request->get('discount','');
+            $discount_type = $request->get('discount_type','');
+            $shipping_charge = $request->get('shipping_charge','');
+            $delivery_method = $request->get('delivery_method');
+            $shipping_address_id = $request->get('shipping_address_id');
+        }else{
+            return 'Bad Request';
+        }
 
-            ];
-            $customer_shipping_address = "";
-            $this->createCustomer('maher alouda','0543819647',$customer_address,$customer_shipping_address);  
-        // }
+        if(!in_array($customer_phone,$customers_phones)) {
+            $customer_info = $this->createCustomer($customer_name,$customer_phone,$customer_address,$customer_shipping_address);
+            $customer_id = $customer_info['customer_id'];
+            $saleOrder_info = $this->createSaleOrder($request,$customer_id);
+        }
 
     }
 
     public function generateAccessToken() {
+
+        // $items = [
+        //     [
+        //     'id' => 122222,
+        //     'name' => 'dell pc',
+        //     'desc' => 'this is desc',
+        //     'qty' => 3,
+        //     'total' => 444],
+        //     [
+        //         'id' => 12224422,
+        //         'name' => 'hp pc',
+        //         'desc' => 'this is desc',
+        //         'qty' => 3,
+        //         'total' => 444]
+        // ];
+        // $text = $this->buildItemsAsString($items);
+        echo $text;exit;
         $httpClient1 = new Client([
             'base_uri' => config('app.api_base_url_for_access_token'),
         ]);
@@ -75,7 +93,7 @@ class ZohoApiController extends Controller
         return $responseBody['access_token'];
 }
 
-public function getAllOrganizationCustomersPhones() {
+public function getAllOrganizationCustomersInfo() {
 
     $curl = curl_init();    
     curl_setopt_array($curl, array(
@@ -102,21 +120,20 @@ public function getAllOrganizationCustomersPhones() {
     }
     curl_close($curl);
     $customers = $responseBody['contacts'];
-    // var_dump($customers);exit;
-    $customer_phones= array();
-    foreach($customers as $customer){
-        $customer_phones[] = $customer['phone'];
-    }
-return $customer_phones;
+return $customers;
 }
 
-public function createSaleOrder() {       
+public function createSaleOrder(Request $request,$customer_id) {       
     
+    $date = $request->get('date');
+    $items[]= $request->get('line_items');    
+    $itemsAsString = $this->buildItemsAsString($items);
     $curl = curl_init();
-    $jsonstring = '{"oauthscope":"ZohoInventory.salesorders.CREATE","customer_id":2540554000000074003,"salesorder_number":"SO-002980999203","date":"2015-05-28","shipment_date":"2015-06-02","custom_fields":[{}],"reference_number":"REF-S-00003","line_items":[{"item_id":2540554000000073331,"name":"Laptop-white/15inch/dell","description":"Justasampledescription.","rate":122,"quantity":2,"unit":"qty","item_total":244}],"documents":[{"can_send_in_mail":true,"file_name":"sample.pdf","file_type":"pdf","file_size_formatted":"116.8KB","attachment_order":1,"document_id":16115000000096068,"file_size":11957}]}';
+    $jsonstring = '{"oauthscope":"ZohoInventory.salesorders.CREATE","customer_id":'.$customer_id.',"date":"'.$date.'","shipment_date":"2015-06-02","line_items":'.$itemsAsString.'}';
+    echo $jsonstring;exit;
     $jsonstring = urlencode($jsonstring);
     curl_setopt_array($curl, array(
-            CURLOPT_URL => 'https://inventory.zoho.com/api/v1/salesorders?=&organization_id=741141186&ignore_auto_number_generation=true',
+            CURLOPT_URL => 'https://inventory.zoho.com/api/v1/salesorders?=&organization_id=741141186&ignore_auto_number_generation=false',
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_ENCODING => '',
             CURLOPT_MAXREDIRS => 10,
@@ -187,10 +204,11 @@ public function createCustomer($customer_name,$customer_phone,$customer_address,
 
 
     $curl = curl_init();
-    $jsonstring = '"{"contact_name": "'.$customer_name.'","company_name": "'.$customer_name.'","contact_type": "customer","billing_address": {"attention": "Mr."'.$first_name.'","address": "'.$address.'","street2": "'.$street.'","city": "'.$city.'","state": "'.$state.'","country": "'.$country.'"},"shipping_address": {"attention": "Mr."'.$first_name.'","address": "'.$sAddress.'","street2": "'.$sStreet.'","city": "'.$sCity.'","state": "'.$sState.'","zip": 94588,"country": "'.$sCountry.'"},"contact_persons": [{"alutation": "Mr","first_name": "'.$first_name.'","last_name": "'.$last_name.'","email": "","phone": "'.$customer_phone.'","mobile":"'.$customer_phone.'","is_primary_contact": true }]}"';
+    $jsonstring = '
+    {"contact_name": "'.$customer_name.'","company_name": "'.$customer_name.'","contact_type": "customer","billing_address": {"attention": "Mr.'.$first_name.'","address": "'.$address.'","street2": "'.$street.'","city": "'.$city.'","state": "'.$state.'","country": "'.$country.'"},"shipping_address": {"attention": "Mr.'.$first_name.'","address": "'.$sAddress.'","street2": "'.$sStreet.'","city": "'.$sCity.'","state": "'.$sState.'","zip": 94588,"country": "'.$sCountry.'"},"contact_persons": [{"alutation": "Mr","first_name": "'.$first_name.'","last_name": "'.$last_name.'","email": "","phone": "'.$customer_phone.'","mobile":"'.$customer_phone.'","is_primary_contact": true }]}';
     
-    $jsonstring = urlencode($jsonstring);
-    echo $jsonstring;
+    
+    $jsonstring = urlencode($jsonstring);    
     curl_setopt_array($curl, array(
         CURLOPT_URL => 'https://inventory.zoho.com/api/v1/contacts?&organization_id=741141186&ignore_auto_number_generation=true',
         CURLOPT_RETURNTRANSFER => true,
@@ -202,22 +220,41 @@ public function createCustomer($customer_name,$customer_phone,$customer_address,
         CURLOPT_CUSTOMREQUEST => 'POST',
         CURLOPT_POSTFIELDS => 'JSONString='. $jsonstring,
         CURLOPT_HTTPHEADER => array(
-            'Authorization: Zoho-oauthtoken 1000.b6c568d6908e984f5322c4ff34e182d1.94a1d21320a69375734490410dc887ff',
+            'Authorization: Zoho-oauthtoken 1000.773f3702429f05db6f899c2e2806677b.82d977e6ceacaa0f600adcee946ef559',
             'Content-Type: application/x-www-form-urlencoded',    
         ),
     ));
-
+    curl_setopt($curl,CURLOPT_RETURNTRANSFER,TRUE);
     $response = curl_exec($curl);
+    if($response) {
+        $responseBody = json_decode($response,true);
+    }else{
+        return 'there is something goes wrong';
+    }
     curl_close($curl);
-    echo $response;
+    $customer_info = $responseBody['contact'];
+    
 }
 
 
-function split_name($name) {
+public function split_name($name) {
     $name = trim($name);
     $last_name = (strpos($name, ' ') === false) ? '' : preg_replace('#.*\s([\w-]*)$#', '$1', $name);
     $first_name = trim( preg_replace('#'.preg_quote($last_name,'#').'#', '', $name ) );
     return array($first_name, $last_name);
+}
+
+// "line_items":[{"item_id":2540554000000073331,"name":"Laptop-white/15inch/dell","description":"Justasampledescription.","rate":122,"quantity":2,"unit":"qty","item_total":244}]
+public function buildItemsAsString($items) {
+    
+    $arrayAsString = '[';
+    // var_dump($items);exit;
+    foreach($items as $item){
+        $arrayAsString .= '{"item_id":'.$item['id'].',"name":"'.$item['name'].'","description":"'.$item['desc'].'","quantity":'.$item['qty'].',"item_total":'.$item['total'].'},';
+    }
+    $arrayAsString = rtrim($arrayAsString,',');
+    $arrayAsString .=']';
+    return $arrayAsString;
 }
 
 
