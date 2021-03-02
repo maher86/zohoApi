@@ -23,10 +23,16 @@ class ZohoApiController extends Controller
 
     
     public function runAllApisCycle() {
-        $accessToken = $this->generateAccessToken();
-        $customers = $this->getAllOrganizationCustomersInfo();
+
         $customer_phones= array();
-        $customer_ids   = array();               
+        $customer_ids   = array(); 
+        $adminEmails     = array();
+        $accessToken = $this->generateAccessToken();
+        $admins      = $this->getAdmins($accessToken);        
+        foreach($admins as $admin) {
+            $adminEmails[] = $admin['email'];
+        } 
+        $customers = $this->getAllOrganizationCustomersInfo();                      
         if($requet) {
             $customer_name             = $request->get('customer_name');
             $customer_phone            = $request->get('customer_phone');
@@ -60,7 +66,15 @@ class ZohoApiController extends Controller
         }
         $saleOrder_info                = $this->createSaleOrder($request,$accessToken,$customer_id);
         $invoice_info                  = $this->createInvoice($saleOrder_info,$accessToken);
-
+        $admins                        = $this->getAdmins($accessToken);
+        $invoice_id                    = $invoice_info['invoice_id'];
+        $customer_email                = $customer_info['email'];
+        $emails[]                      = $customer_email;
+        foreach ($admins as $admin ) {
+            $emails[] = $admin['email'];
+        }
+         $this->sendEmail($invoice_id,$emails);
+        //todo send invoice to printer
     }
 
     public function generateAccessToken() {        
@@ -265,6 +279,17 @@ public function buildInvoiceItemsAsString($items) {
    
 }
 
+public function buildEmailsArrayAsString($emails) {
+    
+    $arrayAsString     = '[';
+    foreach($emails as $email){
+        $arrayAsString .='"'.$email.'",';
+    }
+        $arrayAsString  = rtrim($arrayAsString,',');
+        $arrayAsString .=']';
+        return $arrayAsString;
+}
+
 public function getCustomerIdByPhone($customers,$phone) {
 
     foreach ($customers as $customer) {
@@ -277,9 +302,64 @@ public function getCustomerIdByPhone($customers,$phone) {
     return '';
 
 }
+public function getAdmins($accessToken) {
+    $httpClient1 = new Client([
+        'base_uri' => 'https://inventory.zoho.com/api/v1/users',
+    ]);
+    $response = $httpClient1->request('GET',
+        '?organization_id=741141186&type=AdminUsers',[
+            'headers' => [
+                'Authorization' =>''.$accessToken.''// 'Zoho-oauthtoken 1000.8fee4dd65af86acc34e9b49d1477ac84.6b8a1f05e424a19d7e9c5f89130c7413'
+            ]
+        ]
+    );
+    if($response) {
+        $responseBody = json_decode($response->getbody(),true);
+    }else{
+        return 'there is something goes wrong';
+    }
+         
+    return $responseBody['users'];
+    }
 
 
+    public function sendEmail($invoice_id,$emails) {//todo pass invoice NO
+    $emailsAsString = $this->buildEmailsArrayAsString($emails);
+    $curl = curl_init();
+    $jsonstring = '
+    {
+        "send_from_org_email_id": false,
+        "to_mail_ids": '.$emailsAsString.',        
+        "subject": "Invoice from Zillium Inc (Invoice#: INV-00001)",
+        "body": "Dear Customer,         <br><br><br><br>Thanks for your business.         <br><br><br><br>The invoice INV-00001 is attached with this email. You can choose the easy way out and <a href= https://invoice.zoho.com/SecurePayment?CInvoiceID=b9800228e011ae86abe71227bdacb3c68e1af685f647dcaed747812e0b9314635e55ac6223925675b371fcbd2d5ae3dc  >pay online for this invoice.</a>         <br><br>Here\'s an overview of the invoice for your reference.         <br><br><br><br>Invoice Overview:         <br><br>Invoice  : INV-00001         <br><br>Date : 05 Aug 2013         <br><br>Amount : $541.82         <br><br><br><br>It was great working with you. Looking forward to working with you again.<br><br><br>\\nRegards<br>\\nZillium Inc<br>\\n\","
+    }';
+    
+    
+    $jsonstring = urlencode($jsonstring);    
+    curl_setopt_array($curl, array(
+        CURLOPT_URL => 'https://inventory.zoho.com/api/v1/invoices/'.$invoice_id.'/email?organization_id=741141186',
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_ENCODING => '',
+        CURLOPT_MAXREDIRS => 10,
+        CURLOPT_TIMEOUT => 0,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+        CURLOPT_CUSTOMREQUEST => 'POST',
+        CURLOPT_POSTFIELDS => 'JSONString='. $jsonstring,
+        CURLOPT_HTTPHEADER => array(
+            'Authorization: Zoho-oauthtoken '.$accessToken.'',
+            'Content-Type: application/x-www-form-urlencoded',    
+        ),
+    ));
+    curl_setopt($curl,CURLOPT_RETURNTRANSFER,TRUE);
+    $response = curl_exec($curl); 
+    }
 }
+
+
+
+
+
 
 
 

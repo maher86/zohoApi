@@ -23,4 +23,6 @@ Route::get('createInvoice','Api\ZohoApiController@createInvoice');
 Route::get('createCustomer','Api\ZohoApiController@createCustomer');
 Route::get('Customers','Api\ZohoApiController@getAllOrganizationCustomers');
 Route::get('create','Api\ZohoApiController@runAllApisCycle');
+Route::get('getAdmins','Api\ZohoApiController@getAdmins');
+Route::get('build','Api\ZohoApiController@buildEmailsArrayAsString');
 
