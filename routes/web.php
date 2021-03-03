@@ -25,4 +25,6 @@ Route::get('Customers','Api\ZohoApiController@getAllOrganizationCustomers');
 Route::get('create','Api\ZohoApiController@runAllApisCycle');
 Route::get('getAdmins','Api\ZohoApiController@getAdmins');
 Route::get('build','Api\ZohoApiController@buildEmailsArrayAsString');
+Route::get('runAllCycle','Api\ZohoApiController@runAllApisCycle');
+Route::get('getcustomeremail\{id}','Api\ZohoApiController@getCustomerById');
 

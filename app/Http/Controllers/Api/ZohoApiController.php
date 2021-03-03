@@ -22,7 +22,7 @@ class ZohoApiController extends Controller
     }
 
     
-    public function runAllApisCycle() {
+    public function runAllApisCycle(Request $request) {
 
         $customer_phones= array();
         $customer_ids   = array(); 
@@ -32,8 +32,16 @@ class ZohoApiController extends Controller
         foreach($admins as $admin) {
             $adminEmails[] = $admin['email'];
         } 
-        $customers = $this->getAllOrganizationCustomersInfo();                      
-        if($requet) {
+        $customers = $this->getAllOrganizationCustomersInfo($accessToken);
+        /*
+        **customer_name : alaa bat7a
+          customer_phone: 0791883838383
+          date:20120-05-28
+        **
+        **
+        **
+        */                      
+        if($request) {
             $customer_name             = $request->get('customer_name');
             $customer_phone            = $request->get('customer_phone');
             $customer_address          = $request->get('customer_address');
@@ -56,9 +64,9 @@ class ZohoApiController extends Controller
         }
         foreach($customers as $customer){
             $customer_phones[]         = $customer['phone'];
-            $customer_ids[]            = $customer['customer_id'];
+            $customer_ids[]            = $customer['contact_id'];
         }
-        if(!in_array($customer_phone,$customers_phones)) {
+        if(!in_array($customer_phone,$customer_phones)) {
             $customer_info             = $this->createCustomer($accessToken,$customer_name,$customer_phone,$customer_address,$customer_shipping_address);
             $customer_id               = $customer_info['customer_id'];
         }else{
@@ -68,7 +76,8 @@ class ZohoApiController extends Controller
         $invoice_info                  = $this->createInvoice($saleOrder_info,$accessToken);
         $admins                        = $this->getAdmins($accessToken);
         $invoice_id                    = $invoice_info['invoice_id'];
-        $customer_email                = $customer_info['email'];
+        $customerContacts              = $this->getCustomerById($customer_id);
+        $customer_email                = $customerContacts['email'];
         $emails[]                      = $customer_email;
         foreach ($admins as $admin ) {
             $emails[] = $admin['email'];
@@ -127,10 +136,10 @@ class ZohoApiController extends Controller
 public function createSaleOrder(Request $request,$accessToken,$customer_id) {       
     
     $date = $request->get('date');
-    $items[]= $request->get('line_items');    
-    $itemsAsString = $this->buildItemsAsString($items);
+    $items= $request->get('line_items');    
+    // $itemsAsString = $this->buildSalesOrderItemsAsString($items);
     $curl = curl_init();
-    $jsonstring = '{"oauthscope":"ZohoInventory.salesorders.CREATE","customer_id":'.$customer_id.',"date":"'.$date.'","shipment_date":"2015-06-02","line_items":'.$itemsAsString.'}';
+    $jsonstring = '{"oauthscope":"ZohoInventory.salesorders.CREATE","customer_id":'.$customer_id.',"date":"'.$date.'","shipment_date":"2021-06-02","line_items":'.$items.'}';
     
     $jsonstring = urlencode($jsonstring);
     curl_setopt_array($curl, array(
@@ -184,7 +193,7 @@ public function createInvoice ($salesOrderData,$accessToken) {
             CURLOPT_CUSTOMREQUEST => 'POST',
             CURLOPT_POSTFIELDS => 'JSONString='. $jsonstring,
             CURLOPT_HTTPHEADER => array(
-                    'Authorization: Zoho-oauthtoken '.$accesstoken.'',
+                    'Authorization: Zoho-oauthtoken '.$accessToken.'',
                     'Content-Type: application/x-www-form-urlencoded',    
             ),
     ));
@@ -257,21 +266,24 @@ public function split_name($name) {
     return array($first_name, $last_name);
 }
 public function buildSalesOrderItemsAsString($items) {
-    
+    //  $items = json_decode($items,true);
+    //if(is_array($items)){
     $arrayAsString = '[';    
     foreach($items as $item){
-        $arrayAsString .= '{"item_id":'.$item['id'].',"name":"'.$item['name'].'","description":"'.$item['desc'].'","quantity":'.$item['qty'].',"item_total":'.$item['total'].'},';
+        $arrayAsString .= '{"item_id":'.$item['item_id'].',"name":"'.$item['name'].'","description":"'.$item['desc'].'","quantity":'.$item['qty'].',"item_total":'.$item['total'].'},';
     }
     $arrayAsString = rtrim($arrayAsString,',');
     $arrayAsString .=']';
     return $arrayAsString;
+// }
+// return 'items line should be an array';
 }
 
 public function buildInvoiceItemsAsString($items) {
 
     $arrayAsString     = '[';
     foreach($items as $item){
-        $arrayAsString .='{""item_id":'.$item['id'].',"name":"'.$item['name'].'","description":"'.$item['description'].'","rate":'.$item['rate'].',"quantity":'.$item['quantity'].',"salesorder_item_id":'.$item['line_item_id'].',"item_total":""},';
+        $arrayAsString .='{""item_id":'.$item['item_id'].',"name":"'.$item['name'].'","description":"'.$item['description'].'","rate":'.$item['rate'].',"quantity":'.$item['quantity'].',"salesorder_item_id":'.$item['line_item_id'].',"item_total":""},';
     }
         $arrayAsString  = rtrim($arrayAsString,',');
         $arrayAsString .=']';
@@ -294,7 +306,7 @@ public function getCustomerIdByPhone($customers,$phone) {
 
     foreach ($customers as $customer) {
         if ($customer['phone'] == $phone) {
-            return $customer['customer_id'];
+            return $customer['contact_id'];
             break;
         }
     }
@@ -309,7 +321,7 @@ public function getAdmins($accessToken) {
     $response = $httpClient1->request('GET',
         '?organization_id=741141186&type=AdminUsers',[
             'headers' => [
-                'Authorization' =>''.$accessToken.''// 'Zoho-oauthtoken 1000.8fee4dd65af86acc34e9b49d1477ac84.6b8a1f05e424a19d7e9c5f89130c7413'
+                'Authorization' =>'Zoho-oauthtoken '.$accessToken.''// 'Zoho-oauthtoken 1000.8fee4dd65af86acc34e9b49d1477ac84.6b8a1f05e424a19d7e9c5f89130c7413'
             ]
         ]
     );
@@ -353,6 +365,28 @@ public function getAdmins($accessToken) {
     ));
     curl_setopt($curl,CURLOPT_RETURNTRANSFER,TRUE);
     $response = curl_exec($curl); 
+    }    
+    public function getCustomerById($id) {
+
+        $httpClient1 = new Client([
+            'base_uri' => 'https://inventory.zoho.com/api/v1/contacts/'.$id.'?organization_id=10234695
+            ',
+        ]);
+        $response = $httpClient1->request('GET',
+            '?organization_id=741141186&type=AdminUsers',[
+                'headers' => [
+                    'Authorization' =>'Zoho-oauthtoken '.$accessToken.''// 'Zoho-oauthtoken 1000.8fee4dd65af86acc34e9b49d1477ac84.6b8a1f05e424a19d7e9c5f89130c7413'
+                ]
+            ]
+        );
+        if($response) {
+            $responseBody = json_decode($response->getbody(),true);
+        }else{
+            return 'there is something goes wrong';
+        }
+             
+        return $responseBody['contact']['contact_persons'];
+
     }
 }
 
