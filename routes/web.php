@@ -25,7 +25,8 @@ Route::get('Customers','Api\ZohoApiController@getAllOrganizationCustomers');
 Route::get('create','Api\ZohoApiController@runAllApisCycle');
 Route::get('getAdmins','Api\ZohoApiController@getAdmins');
 Route::get('build','Api\ZohoApiController@buildEmailsArrayAsString');
-Route::get('runAllCycle','Api\ZohoApiController@runAllApisCycle');
+Route::post('runAllCycle','Api\ZohoApiController@runAllApisCycle');
 Route::get('getcustomeremail\{id}','Api\ZohoApiController@getCustomerById');
 Route::get('createTask','Api\ZohoApiController@create_task');
+Route::get('showToken','Api\ZohoApiController@showToken');
 

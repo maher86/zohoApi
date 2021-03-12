@@ -36,11 +36,11 @@ class ZohoApiController extends Controller
         $customer_ids   = array(); 
         $adminEmails     = array();
         $accessToken = $this->generateAccessToken();
-        $admins      = $this->getAdmins($accessToken);        
-        foreach($admins as $admin) {
+        $admins      = $this->getAdmins($accessToken['data']);              
+        foreach($admins['data'] as $admin) {
             $adminEmails[] = $admin['email'];
         } 
-        $customers = $this->getAllOrganizationCustomersInfo($accessToken);
+        $customers = $this->getAllOrganizationCustomersInfo($accessToken['data']);
         /*
         **customer_name : alaa bat7a
           customer_phone: 0791883838383
@@ -70,32 +70,39 @@ class ZohoApiController extends Controller
         }else{
             return 'Bad Request';
         }
-        foreach($customers as $customer){
+        $customers = json_decode($customers,true);
+        foreach($customers['data'] as $customer){
             $customer_phones[]         = $customer['phone'];
             $customer_ids[]            = $customer['contact_id'];
         }
         if(!in_array($customer_phone,$customer_phones)) {
-            $customer_info             = $this->createCustomer($accessToken,$customer_name,$customer_phone,$customer_address,$customer_shipping_address);
-            $customer_id               = $customer_info['customer_id'];
+            $customer_info             = $this->createCustomer($accessToken['data'],$customer_phone,$customer_name,$customer_address,$customer_shipping_address);
+            $customer_id               = $customer_info['data']['customer_id'];
         }else{
-            $customer_id               = $this->getCustomerIdByPhone($customers,$customer_phone);           
+            $customer_id               = $this->getCustomerIdByPhone($customers['data'],$customer_phone);           
         }
-        $saleOrder_info                = $this->createSaleOrder($request,$accessToken,$customer_id);
-        $confimed                      = $this->confirmSalesOrder($accessToken,$saleOrder_info['salesorder_id']);
-        $invoice_info                  = $this->createInvoice($saleOrder_info,$accessToken);
-        $admins                        = $this->getAdmins($accessToken);
-        $invoice_id                    = $invoice_info['invoice_id'];
-        $customerContacts              = $this->getCustomerById($customer_id,$accessToken);
-        $customer_email                = $customerContacts['email'];
+        $saleOrder_info                = $this->createSaleOrder($request,$accessToken['data'],$customer_id);
+        $saleOrder_info                 = json_decode($saleOrder_info,true);        
+        $invoice_info                  = $this->createInvoice($saleOrder_info['data'],$accessToken['data']);
+        $invoice_info                  = json_decode($invoice_info,true);
+        $admins                        = $this->getAdmins($accessToken['data']);
+        $invoice_id                    = $invoice_info['data']['invoice_id'];
+        $customerContacts              = $this->getCustomerById($customer_id,$accessToken['data']);
+        $customer_email                = $customerContacts['data']['email'];
         $emails[]                      = $customer_email;
-        foreach ($admins as $admin ) {
+        foreach ($admins['data'] as $admin ) {
             $emails[] = $admin['email'];
         }
-         $this->sendEmail($invoice_id,$emails,$accessToken);
-         $this->printInvoice($invoice_id,$accessToken);
-         $this->create_task($request);
+         $this->sendEmail($invoice_id,$emails,$accessToken['data']);
+         $responseFromPrint = $this->printInvoice($invoice_id,$accessToken['data']);
+        //  $this->create_task($request);
+        if($responseFromPrint['success'] == true){
 
-        return "The Full Cycle for Creating Invoice Is Done";
+            return json_encode(['success'=>true,'message'=>'the full cycle is done']);
+        }else{
+            return json_encode(['success'=>false,'message'=>'there is something wrong']);
+        }
+        
     }
 
     public function generateAccessToken() {        
@@ -106,13 +113,22 @@ class ZohoApiController extends Controller
         $response = $httpClient1->request('POST',
             '?refresh_token='.$this->refresh_token.'&client_id='.$this->client_id.'&client_secret='.$this->client_secret.'&redirect_uri=https://inventory.zoho.com&grant_type=refresh_token'
         );
-        if($response) {
-            $responseBody = json_decode($response->getbody(),true);
-        }else{
-            return 'there is something goes wrong';
+        $http_code = $response->getStatusCode();
+        $responseBody = json_decode($response->getbody(),true);
+        if($http_code == 200) {            
+            $responseArr  = ['success'=>true,'message'=>'the token has been generated successfully','data'=>$responseBody['access_token']];
+            return $responseArr;        
+        }else{            
+            $responseArr  = ['success'=>false,'message'=>'the token couldn\'t generate'];
+            return json_encode($responseArr);
         }
+        // if($response) {
+        //     $responseBody = json_decode($response->getbody(),true);
+        // }else{
+        //     return 'there is something goes wrong';
+        // }
                
-        return $responseBody['access_token'];
+        // return $responseBody['access_token'];
     }
 
     public function getAllOrganizationCustomersInfo($accessToken) {
@@ -134,22 +150,24 @@ class ZohoApiController extends Controller
             ));
 
             curl_setopt($curl,CURLOPT_RETURNTRANSFER,TRUE);
-            $response = curl_exec($curl);
-            if($response) {
-                $responseBody = json_decode($response,true);
-            }else{
-                return 'there is something goes wrong';
-            }
+            $response = curl_exec($curl);    
+            $http_code = curl_getinfo($curl, CURLINFO_HTTP_CODE);
             curl_close($curl);
-            $customers = $responseBody['contacts'];
-        return $customers;
+            $responseBody = json_decode($response,true);
+            if($http_code == 200) {                
+                $responseArr = ['success'=>true,'message'=>$responseBody['message'],'data'=>$responseBody['contacts']];
+                return json_encode($responseArr);
+            }else{
+                $responseArr = ['success'=>false,'message'=>$responseBody['message'],'data'=>$responseBody['contacts']];
+                return json_encode($responseArr);
+            }           
     }
 
 public function createSaleOrder(Request $request,$accessToken,$customer_id) {       
     
     $date = $request->get('date');
-    $itemsAsString= $request->get('line_items');    
-    // $itemsAsString = $this->buildSalesOrderItemsAsString($items);
+    $itemsAsString= $request->get('line_items');   
+    $itemsAsString = json_encode($itemsAsString);
     $curl = curl_init();
     $jsonstring = '{"oauthscope":"ZohoInventory.salesorders.CREATE","customer_id":'.$customer_id.',"date":"'.$date.'","shipment_date":"2021-06-02","line_items":'.$itemsAsString.'}';
     
@@ -170,16 +188,19 @@ public function createSaleOrder(Request $request,$accessToken,$customer_id) {
             ),
         ));
 
-        curl_setopt($curl,CURLOPT_RETURNTRANSFER,TRUE);
-    $response = curl_exec($curl);
-    if($response) {
-        $responseBody = json_decode($response,true);
-    }else{
-        return 'there is something goes wrong';
-    }
+    curl_setopt($curl,CURLOPT_RETURNTRANSFER,TRUE);
+    $response = curl_exec($curl);    
+    $http_code = curl_getinfo($curl, CURLINFO_HTTP_CODE);
     curl_close($curl);
-    $salesorderInfo = $responseBody['salesorder'];
-return $salesorderInfo;
+    if($http_code == 201) {
+        $responseBody = json_decode($response,true);
+         $responseArr = ['success'=>true,'message'=>$responseBody['message'],'data'=>$responseBody['salesorder']];
+         return json_encode($responseArr);
+    }else{
+         $responseArr = ['success'=>false,'message'=>$responseBody['message'],'data'=>$responseBody['salesorder']];
+         return json_encode($responseArr);
+    }
+    
 }
 
 
@@ -212,17 +233,18 @@ public function createInvoice ($salesOrderData,$accessToken) {
 
     $response = curl_exec($curl);
     $http_code = curl_getinfo($curl, CURLINFO_HTTP_CODE);
-    if( $response) {
-        $responseBody = json_decode($response,true);
-        curl_close($curl);
-        return $responseBody['invoice'];
+    $responseBody = json_decode($response,true);
+    if( $http_code == 201) {        
+        $responseArr  = ['success'=>true,'message'=>$responseBody['message'],'data'=>$responseBody['invoice']];
+        return json_encode($responseArr);        
     }else{
-        return $response;
-    }
+        $responseArr = ['success'=>false,'message'=>$responseBody['message'],'data'=>$responseBody['invoice']];
+        return json_encode($responseArr);
+    }    
     
 }
 
-public function createCustomer($accessToken,$customer_name,$customer_phone,$customer_address,$customer_shipping) {
+public function createCustomer($accessToken,$customer_phone,$customer_name=null,$customer_address=null,$customer_shipping=null) {
 
     $address     = !empty($customer_address['address'])   ? $customer_address['address'] : '';
     $street      = !empty($customer_address['street2'])   ? $customer_address['street2'] : '';
@@ -267,14 +289,16 @@ public function createCustomer($accessToken,$customer_name,$customer_phone,$cust
     ));
     curl_setopt($curl,CURLOPT_RETURNTRANSFER,TRUE);
     $response = curl_exec($curl);
-    if($response) {
-        $responseBody = json_decode($response,true);
-    }else{
-        return 'there is something goes wrong';
-    }
+    $http_code = curl_getinfo($curl, CURLINFO_HTTP_CODE);
     curl_close($curl);
-    $customer_info = $responseBody['contact'];
-    
+    $responseBody = json_decode($response,true);
+    if( $http_code == 201) {        
+        $responseArr  = ['success'=>true,'message'=>$responseBody['message'],'data'=>$responseBody['contact']];
+        return json_encode($responseArr);        
+    }else{
+        $responseArr = ['success'=>false,'message'=>$responseBody['message'],'data'=>$responseBody['contact']];
+        return json_encode($responseArr);
+    }     
 }
 
 
@@ -284,9 +308,7 @@ public function split_name($name) {
     $first_name = trim( preg_replace('#'.preg_quote($last_name,'#').'#', '', $name ) );
     return array($first_name, $last_name);
 }
-public function buildSalesOrderItemsAsString($items) {
-    //   $items = json_decode($items,true);
-    //if(is_array($items)){
+public function buildSalesOrderItemsAsString($items){     
     $arrayAsString = '[';    
     foreach($items as $item){
         $arrayAsString .= '{"item_id":'.$item['item_id'].',"name":"'.$item['name'].'","description":"'.$item['desc'].'","quantity":'.$item['qty'].',"item_total":'.$item['total'].'},';
@@ -294,32 +316,30 @@ public function buildSalesOrderItemsAsString($items) {
     $arrayAsString = rtrim($arrayAsString,',');
     $arrayAsString .=']';
     return $arrayAsString;
-// }
-// return 'items line should be an array';
 }
 
-public function confirmSalesOrder($accessToken,$salesOrderId) {
+// public function confirmSalesOrder($accessToken,$salesOrderId) {
 
-    $httpClient1 = new Client([
-        'base_uri' => 'https://inventory.zoho.com/api/v1/salesorders/'.$salesOrderId.'/status/confirmed',
-    ]);
-    $response = $httpClient1->request('Post',
-        '?organization_id='.$this->organization_id.'',[
-            'headers' => [
-                'Authorization' =>'Zoho-oauthtoken '.$accessToken.''// 'Zoho-oauthtoken 1000.8fee4dd65af86acc34e9b49d1477ac84.6b8a1f05e424a19d7e9c5f89130c7413'
-            ]
-        ]
-    );
-    if($response->getStatusCode() == 200) {
-        return true;
-        // $responseBody = json_decode($response->getbody(),true);
-    }else{
-        return 'there is something goes wrong';
-    }
+//     $httpClient1 = new Client([
+//         'base_uri' => 'https://inventory.zoho.com/api/v1/salesorders/'.$salesOrderId.'/status/confirmed',
+//     ]);
+//     $response = $httpClient1->request('Post',
+//         '?organization_id='.$this->organization_id.'',[
+//             'headers' => [
+//                 'Authorization' =>'Zoho-oauthtoken '.$accessToken.''// 'Zoho-oauthtoken 1000.8fee4dd65af86acc34e9b49d1477ac84.6b8a1f05e424a19d7e9c5f89130c7413'
+//             ]
+//         ]
+//     );
+//     if($response->getStatusCode() == 200) {
+//         return true;
+//         // $responseBody = json_decode($response->getbody(),true);
+//     }else{
+//         return 'there is something goes wrong';
+//     }
          
-    // return $responseBody['users'];
+//     // return $responseBody['users'];
 
-}
+// }
 public function buildInvoiceItemsAsString($items) {
 
     $arrayAsString     = '[';
@@ -366,13 +386,15 @@ public function getAdmins($accessToken) {
             ]
         ]
     );
-    if($response) {
-        $responseBody = json_decode($response->getbody(),true);
-    }else{
-        return 'there is something goes wrong';
+    $http_code = $response->getStatusCode();
+    $responseBody = json_decode($response->getbody(),true);
+    if($http_code == 200) {        
+        $responseArr  = ['success'=>true,'message'=>$responseBody['message'],'data'=>$responseBody['users']];
+        return $responseArr;        
+    }else{       
+        $responseArr  = ['success'=>false,'message'=>$responseBody['message'],'data'=>$responseBody['users']];
+        return json_encode($responseArr);
     }
-         
-    return $responseBody['users'];
     }
 
 
@@ -406,7 +428,19 @@ public function getAdmins($accessToken) {
         ));
         curl_setopt($curl,CURLOPT_RETURNTRANSFER,TRUE);
         $response = curl_exec($curl); 
-    }    
+        $http_code = curl_getinfo($curl, CURLINFO_HTTP_CODE);
+        curl_close($curl);
+        $responseBody = json_decode($response,true);
+        if( $http_code == 200) {            
+            $responseArr  = ['success'=>true,'message'=>$responseBody['message']];
+            return json_encode($responseArr);        
+        }else{
+            $responseArr = ['success'=>false,'message'=>$responseBody['message']];
+            return json_encode($responseArr);
+        }    
+    }
+    
+    
     public function getCustomerById($id,$accessToken) {
 
         $httpClient1 = new Client([
@@ -420,15 +454,21 @@ public function getAdmins($accessToken) {
                 ]
             ]
         );
-        if($response) {
-            $responseBody = json_decode($response->getbody(),true);
-        }else{
-            return 'there is something goes wrong';
-        }
-             
-        return $responseBody['contact'];
+        $http_code = $response->getStatusCode();
+        $responseBody = json_decode($response->getbody(),true);
+        if($http_code == 200) {            
+            $responseArr  = ['success'=>true,'message'=>$responseBody['message'],'data'=>$responseBody['contact']];
+            return $responseArr;        
+        }else{            
+            $responseArr  = ['success'=>false,'message'=>$responseBody['message'],'data'=>$responseBody['contact']];
+            return json_encode($responseArr);
+        }      
 
     }
+    
+
+
+
     public function printInvoice($id,$accessToken) {
 
         $httpClient1 = new Client([
@@ -441,14 +481,15 @@ public function getAdmins($accessToken) {
                 ]
             ]
         );
-        if($response) {
-            $responseBody = json_decode($response->getbody(),true);
-        }else{
-            return 'there is something goes wrong';
+        $http_code = $response->getStatusCode();
+        $responseBody = json_decode($response->getbody(),true);
+        if($http_code == 200) {            
+            $responseArr  = ['success'=>true,'message'=>'invoice has been printed'];
+            return $responseArr;        
+        }else{            
+            $responseArr  = ['success'=>false,'message'=>$responseBody['message']];
+            return json_encode($responseArr);
         }
-             
-        return $responseBody['contact'];
-
     }
 
     //transCrop methods 
@@ -514,6 +555,11 @@ public function getAdmins($accessToken) {
         }
         return $responseBody;
     }
+
+    // public function showToken() {
+    //     echo csrf_token(); 
+  
+    //   }
 
 }
 
