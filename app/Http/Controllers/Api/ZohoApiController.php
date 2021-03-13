@@ -78,11 +78,14 @@ class ZohoApiController extends Controller
         if(!in_array($customer_phone,$customer_phones)) {
             $customer_info             = $this->createCustomer($accessToken['data'],$customer_phone,$customer_name,$customer_address,$customer_shipping_address);
             $customer_id               = $customer_info['data']['customer_id'];
+        }else if (in_array($customer_phone,$customer_phones) && isset($customer_name)){            
+            $customer_id               = $this->getCustomerIdByPhone($customers['data'],$customer_phone);
+            $updated                   = $this->updateCustomerName($accessToken['data'],$customer_name,$customer_id,$customer_phone,$customer_address,$customer_shipping_address);           
         }else{
-            $customer_id               = $this->getCustomerIdByPhone($customers['data'],$customer_phone);           
+            $customer_id               = $this->getCustomerIdByPhone($customers['data'],$customer_phone);
         }
         $saleOrder_info                = $this->createSaleOrder($request,$accessToken['data'],$customer_id);
-        $saleOrder_info                 = json_decode($saleOrder_info,true);        
+        $saleOrder_info                = json_decode($saleOrder_info,true);        
         $invoice_info                  = $this->createInvoice($saleOrder_info['data'],$accessToken['data']);
         $invoice_info                  = json_decode($invoice_info,true);
         $admins                        = $this->getAdmins($accessToken['data']);
@@ -120,15 +123,8 @@ class ZohoApiController extends Controller
             return $responseArr;        
         }else{            
             $responseArr  = ['success'=>false,'message'=>'the token couldn\'t generate'];
-            return json_encode($responseArr);
-        }
-        // if($response) {
-        //     $responseBody = json_decode($response->getbody(),true);
-        // }else{
-        //     return 'there is something goes wrong';
-        // }
-               
-        // return $responseBody['access_token'];
+            abort(400,$responseArr['message']);
+        }        
     }
 
     public function getAllOrganizationCustomersInfo($accessToken) {
@@ -158,8 +154,8 @@ class ZohoApiController extends Controller
                 $responseArr = ['success'=>true,'message'=>$responseBody['message'],'data'=>$responseBody['contacts']];
                 return json_encode($responseArr);
             }else{
-                $responseArr = ['success'=>false,'message'=>$responseBody['message'],'data'=>$responseBody['contacts']];
-                return json_encode($responseArr);
+                $responseArr = ['success'=>false,'message'=>$responseBody['message']];
+                abort(400,$responseArr['message']);
             }           
     }
 
@@ -197,8 +193,8 @@ public function createSaleOrder(Request $request,$accessToken,$customer_id) {
          $responseArr = ['success'=>true,'message'=>$responseBody['message'],'data'=>$responseBody['salesorder']];
          return json_encode($responseArr);
     }else{
-         $responseArr = ['success'=>false,'message'=>$responseBody['message'],'data'=>$responseBody['salesorder']];
-         return json_encode($responseArr);
+         $responseArr = ['success'=>false,'message'=>$responseBody['message']];
+         abort(400,$responseArr['message']);
     }
     
 }
@@ -238,8 +234,8 @@ public function createInvoice ($salesOrderData,$accessToken) {
         $responseArr  = ['success'=>true,'message'=>$responseBody['message'],'data'=>$responseBody['invoice']];
         return json_encode($responseArr);        
     }else{
-        $responseArr = ['success'=>false,'message'=>$responseBody['message'],'data'=>$responseBody['invoice']];
-        return json_encode($responseArr);
+        $responseArr = ['success'=>false,'message'=>$responseBody['message']];
+        abort(400,$responseArr['message']);
     }    
     
 }
@@ -296,8 +292,63 @@ public function createCustomer($accessToken,$customer_phone,$customer_name=null,
         $responseArr  = ['success'=>true,'message'=>$responseBody['message'],'data'=>$responseBody['contact']];
         return json_encode($responseArr);        
     }else{
-        $responseArr = ['success'=>false,'message'=>$responseBody['message'],'data'=>$responseBody['contact']];
-        return json_encode($responseArr);
+        $responseArr = ['success'=>false,'message'=>$responseBody['message']];
+        abort(400,$responseArr['message']);
+    }     
+}
+
+
+public function updateCustomerName($accessToken,$customer_name,$customer_id,$customer_phone,$customer_address=null,$customer_shipping=null) {
+    
+    $address     = !empty($customer_address['address'])   ? $customer_address['address'] : '';
+    $street      = !empty($customer_address['street2'])   ? $customer_address['street2'] : '';
+    $city        = !empty($customer_address['city'])      ? $customer_address['city']    : '';
+    $state       = !empty($customer_address['state'])     ? $customer_address['state']   : '';
+    $country     = !empty($customer_address['country'])   ? $customer_address['country'] : '';
+    $zip         = !empty($customer_address['zip'])       ? $customer_address['zip']     : '';
+    
+    $sAddress    = !empty($customer_shipping['address']) ? $customer_shipping['address'] : '';
+    $sStreet     = !empty($customer_shipping['street2']) ? $customer_shipping['street2'] : '';
+    $sCity       = !empty($customer_shipping['city'])    ? $customer_shipping['city']    : '';
+    $sState      = !empty($customer_shipping['state'])   ? $customer_shipping['state']   : '';
+    $sCountry    = !empty($customer_shipping['country']) ? $customer_shipping['country'] : '';
+    $sZip        = !empty($customer_shipping['zip'])     ? $customer_shipping['zip']     : '';
+
+    $spiltedName = $this->split_name($customer_name);
+    $first_name  = $spiltedName[0];
+    $last_name   = $spiltedName[1];
+    $curl = curl_init();
+    $jsonstring = '
+    {"contact_name": "'.$customer_name.'","company_name": "'.$customer_name.'","contact_type": "customer","billing_address": {"attention": "Mr.'.$first_name.'","address": "'.$address.'","street2": "'.$street.'","city": "'.$city.'","state": "'.$state.'","country": "'.$country.'"},"shipping_address": {"attention": "Mr.'.$first_name.'","address": "'.$sAddress.'","street2": "'.$sStreet.'","city": "'.$sCity.'","state": "'.$sState.'","zip": 94588,"country": "'.$sCountry.'"},"contact_persons": [{"alutation": "Mr","first_name": "'.$first_name.'","last_name": "'.$last_name.'","email": "","phone": "'.$customer_phone.'","mobile":"'.$customer_phone.'","is_primary_contact": true }]}';
+    
+    
+    $jsonstring = urlencode($jsonstring);    
+    curl_setopt_array($curl, array(
+        CURLOPT_URL => 'https://inventory.zoho.com/api/v1/contacts/'.$customer_id.'?&organization_id='.$this->organization_id.'&ignore_auto_number_generation=true',
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_ENCODING => '',
+        CURLOPT_MAXREDIRS => 10,
+        CURLOPT_TIMEOUT => 0,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+        CURLOPT_CUSTOMREQUEST => 'PUT',
+        CURLOPT_POSTFIELDS => 'JSONString='. $jsonstring,
+        CURLOPT_HTTPHEADER => array(
+            'Authorization: Zoho-oauthtoken '.$accessToken.'',
+            'Content-Type: application/x-www-form-urlencoded',    
+        ),
+    ));
+    curl_setopt($curl,CURLOPT_RETURNTRANSFER,TRUE);
+    $response = curl_exec($curl);
+    $http_code = curl_getinfo($curl, CURLINFO_HTTP_CODE);
+    curl_close($curl);
+    $responseBody = json_decode($response,true);
+    if( $http_code == 200 && $responseBody['code'] == 0) {        
+        $responseArr  = ['success'=>true,'message'=>$responseBody['message'],'data'=>$responseBody['contact']];
+        return json_encode($responseArr);        
+    }else{
+        $responseArr = ['success'=>false,'message'=>$responseBody['message']];
+       abort(400,$responseArr['message']);
     }     
 }
 
@@ -318,28 +369,7 @@ public function buildSalesOrderItemsAsString($items){
     return $arrayAsString;
 }
 
-// public function confirmSalesOrder($accessToken,$salesOrderId) {
 
-//     $httpClient1 = new Client([
-//         'base_uri' => 'https://inventory.zoho.com/api/v1/salesorders/'.$salesOrderId.'/status/confirmed',
-//     ]);
-//     $response = $httpClient1->request('Post',
-//         '?organization_id='.$this->organization_id.'',[
-//             'headers' => [
-//                 'Authorization' =>'Zoho-oauthtoken '.$accessToken.''// 'Zoho-oauthtoken 1000.8fee4dd65af86acc34e9b49d1477ac84.6b8a1f05e424a19d7e9c5f89130c7413'
-//             ]
-//         ]
-//     );
-//     if($response->getStatusCode() == 200) {
-//         return true;
-//         // $responseBody = json_decode($response->getbody(),true);
-//     }else{
-//         return 'there is something goes wrong';
-//     }
-         
-//     // return $responseBody['users'];
-
-// }
 public function buildInvoiceItemsAsString($items) {
 
     $arrayAsString     = '[';
@@ -392,8 +422,8 @@ public function getAdmins($accessToken) {
         $responseArr  = ['success'=>true,'message'=>$responseBody['message'],'data'=>$responseBody['users']];
         return $responseArr;        
     }else{       
-        $responseArr  = ['success'=>false,'message'=>$responseBody['message'],'data'=>$responseBody['users']];
-        return json_encode($responseArr);
+        $responseArr  = ['success'=>false,'message'=>$responseBody['message']];
+        abort(400,$responseArr['message']);
     }
     }
 
@@ -436,7 +466,7 @@ public function getAdmins($accessToken) {
             return json_encode($responseArr);        
         }else{
             $responseArr = ['success'=>false,'message'=>$responseBody['message']];
-            return json_encode($responseArr);
+            abort(400,$responseArr['message']);
         }    
     }
     
@@ -460,8 +490,8 @@ public function getAdmins($accessToken) {
             $responseArr  = ['success'=>true,'message'=>$responseBody['message'],'data'=>$responseBody['contact']];
             return $responseArr;        
         }else{            
-            $responseArr  = ['success'=>false,'message'=>$responseBody['message'],'data'=>$responseBody['contact']];
-            return json_encode($responseArr);
+            $responseArr  = ['success'=>false,'message'=>$responseBody['message']];
+            abort(400,$responseArr['message']);
         }      
 
     }
@@ -488,7 +518,7 @@ public function getAdmins($accessToken) {
             return $responseArr;        
         }else{            
             $responseArr  = ['success'=>false,'message'=>$responseBody['message']];
-            return json_encode($responseArr);
+            abort(400,$responseArr['message']);
         }
     }
 
